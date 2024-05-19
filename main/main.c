@@ -2,12 +2,13 @@
 #include "esp_wifi.h"
 #include "esp_system.h"
 #include "esp_event.h"
-#include "esp_event_loop.h"
+// #include "esp_event_loop.h"
 #include "nvs_flash.h"
 #include "driver/gpio.h"
 #include "esp_partition.h"
 #include "esp_ota_ops.h"
 #include "esp_heap_caps.h"
+#include "esp_flash.h"
 #include "esp_flash_data_types.h"
 #include "rom/crc.h"
 
@@ -279,7 +280,7 @@ static void print_partitions()
 
     esp_err_t err;
 
-    err = spi_flash_read(ESP_PARTITION_TABLE_OFFSET, (void*)partition_data, ESP_PARTITION_TABLE_MAX_LEN);
+    err = esp_flash_read(NULL, (void*)partition_data, ESP_PARTITION_TABLE_OFFSET, ESP_PARTITION_TABLE_MAX_LEN);
     if (err != ESP_OK) abort();
 
     for (int i = 0; i < ESP_PARTITION_TABLE_MAX_ENTRIES; ++i)
@@ -293,9 +294,9 @@ static void print_partitions()
         printf("\tmagic=%#06x\n", part->magic);
         printf("\ttype=%#04x\n", part->type);
         printf("\tsubtype=%#04x\n", part->subtype);
-        printf("\t[pos.offset=%#010x, pos.size=%#010x]\n", part->pos.offset, part->pos.size);
+        printf("\t[pos.offset=%#010lx, pos.size=%#010lx]\n", part->pos.offset, part->pos.size);
         printf("\tlabel='%-16s'\n", part->label);
-        printf("\tflags=%#010x\n", part->flags);
+        printf("\tflags=%#010lx\n", part->flags);
         printf("\n");
     }
 
@@ -314,7 +315,7 @@ static void write_partition_table(odroid_partition_t* parts, size_t parts_count)
         indicate_error();
     }
 
-    err = spi_flash_read(ESP_PARTITION_TABLE_OFFSET, (void*)partition_data, ESP_PARTITION_TABLE_MAX_LEN);
+    err = esp_flash_read(NULL, (void*)partition_data, ESP_PARTITION_TABLE_OFFSET, ESP_PARTITION_TABLE_MAX_LEN);
     if (err != ESP_OK)
     {
         DisplayError("TABLE READ ERROR");
@@ -385,7 +386,7 @@ static void write_partition_table(odroid_partition_t* parts, size_t parts_count)
         indicate_error();
     }
 
-    err = spi_flash_erase_range(ESP_PARTITION_TABLE_OFFSET, 4096);
+    err = esp_flash_erase_region(NULL, ESP_PARTITION_TABLE_OFFSET, 4096);
     if (err != ESP_OK)
     {
         DisplayError("TABLE ERASE ERROR");
@@ -393,14 +394,14 @@ static void write_partition_table(odroid_partition_t* parts, size_t parts_count)
     }
 
     // Write new table
-    err = spi_flash_write(ESP_PARTITION_TABLE_OFFSET, (void*)partition_data, ESP_PARTITION_TABLE_MAX_LEN);
+    err = esp_flash_write(NULL, (void*)partition_data, ESP_PARTITION_TABLE_OFFSET, ESP_PARTITION_TABLE_MAX_LEN);
     if (err != ESP_OK)
     {
         DisplayError("TABLE WRITE ERROR");
         indicate_error();
     }
 
-    esp_partition_reload_table();
+    esp_partition_unload_all();
 }
 
 
@@ -412,7 +413,7 @@ void flash_firmware(const char* fullPath)
 {
     size_t count;
 
-    printf("%s: HEAP=%#010x\n", __func__, esp_get_free_heap_size());
+    printf("%s: HEAP=%#010lx\n", __func__, esp_get_free_heap_size());
 
     ui_draw_title();
     ui_update_display();
@@ -554,7 +555,7 @@ void flash_firmware(const char* fullPath)
         DisplayError("CHECKSUM READ ERROR");
         indicate_error();
     }
-    printf("%s: expected_checksum=%#010x\n", __func__, expected_checksum);
+    printf("%s: expected_checksum=%#010lx\n", __func__, expected_checksum);
 
 
     fseek(file, 0, SEEK_SET);
@@ -575,7 +576,7 @@ void flash_firmware(const char* fullPath)
         if (count < ERASE_BLOCK_SIZE) break;
     }
 
-    printf("%s: checksum=%#010x\n", __func__, checksum);
+    printf("%s: checksum=%#010lx\n", __func__, checksum);
 
     if (checksum != expected_checksum)
     {
@@ -668,7 +669,7 @@ void flash_firmware(const char* fullPath)
 
         if (length > slot.length)
         {
-            printf("%s: data length error - length=%x, slot.length=%x\n",
+            printf("%s: data length error - length=%lx, slot.length=%lx\n",
                 __func__, length, slot.length);
 
             DisplayError("DATA LENGTH ERROR");
@@ -694,10 +695,10 @@ void flash_firmware(const char* fullPath)
             DisplayProgress(0);
             DisplayMessage(tempstring);
 
-            esp_err_t ret = spi_flash_erase_range(curren_flash_address, eraseBlocks * ERASE_BLOCK_SIZE);
+            esp_err_t ret = esp_flash_erase_region(NULL, curren_flash_address, eraseBlocks * ERASE_BLOCK_SIZE);
             if (ret != ESP_OK)
             {
-                printf("spi_flash_erase_range failed. eraseBlocks=%d\n", eraseBlocks);
+                printf("esp_flash_erase_region failed. eraseBlocks=%d\n", eraseBlocks);
                 DisplayError("ERASE ERROR");
                 indicate_error();
             }
@@ -736,10 +737,10 @@ void flash_firmware(const char* fullPath)
                 // flash
                 //printf("Writing offset=0x%x\n", offset);
                 //ret = esp_partition_write(part, offset, data, count);
-                ret = spi_flash_write(curren_flash_address + offset, data, count);
+                ret = esp_flash_write(NULL, data, curren_flash_address + offset, count);
                 if (ret != ESP_OK)
         		{
-        			printf("spi_flash_write failed. address=%#08x\n", curren_flash_address + offset);
+        			printf("esp_flash_write failed. address=%#08x\n", curren_flash_address + offset);
                     DisplayError("WRITE ERROR");
                     indicate_error();
         		}
@@ -749,7 +750,7 @@ void flash_firmware(const char* fullPath)
 
             if (totalCount != length)
             {
-                printf("Size mismatch: lenght=%#08x, totalCount=%#08x\n", length, totalCount);
+                printf("Size mismatch: lenght=%#08lx, totalCount=%#08x\n", length, totalCount);
                 DisplayError("DATA SIZE ERROR");
                 indicate_error();
             }
@@ -761,7 +762,7 @@ void flash_firmware(const char* fullPath)
 
 
             // Notify OK
-            sprintf(tempstring, "OK: [%d] Length=%#08x", parts_count, length);
+            sprintf(tempstring, "OK: [%d] Length=%#08lx", parts_count, length);
 
             printf("%s\n", tempstring);
             //DisplayFooter(tempstring);
@@ -780,7 +781,7 @@ void flash_firmware(const char* fullPath)
 
     }
 
-    close(file);
+    fclose(file);
 
 
     // Utility
@@ -820,10 +821,10 @@ void flash_firmware(const char* fullPath)
         DisplayProgress(0);
         DisplayMessage(tempstring);
 
-        esp_err_t ret = spi_flash_erase_range(curren_flash_address, eraseBlocks * ERASE_BLOCK_SIZE);
+        esp_err_t ret = esp_flash_erase_region(NULL, curren_flash_address, eraseBlocks * ERASE_BLOCK_SIZE);
         if (ret != ESP_OK)
         {
-            printf("spi_flash_erase_range failed. eraseBlocks=%d\n", eraseBlocks);
+            printf("esp_flash_erase_region failed. eraseBlocks=%d\n", eraseBlocks);
             DisplayError("ERASE ERROR");
             indicate_error();
         }
@@ -862,10 +863,10 @@ void flash_firmware(const char* fullPath)
             // flash
             //printf("Writing offset=0x%x\n", offset);
             //ret = esp_partition_write(part, offset, data, count);
-            ret = spi_flash_write(curren_flash_address + offset, data, count);
+            ret = esp_flash_write(NULL, data, curren_flash_address + offset, count);
             if (ret != ESP_OK)
             {
-                printf("spi_flash_write failed. address=%#08x\n", curren_flash_address + offset);
+                printf("esp_flash_write failed. address=%#08x\n", curren_flash_address + offset);
                 DisplayError("WRITE ERROR");
                 indicate_error();
             }
@@ -942,7 +943,7 @@ static void ui_draw_title()
 
 static void ui_draw_page(char** files, int fileCount, int currentItem)
 {
-    printf("%s: HEAP=%#010x\n", __func__, esp_get_free_heap_size());
+    printf("%s: HEAP=%#010lx\n", __func__, esp_get_free_heap_size());
 
     int page = currentItem / ITEM_COUNT;
     page *= ITEM_COUNT;
@@ -1043,7 +1044,7 @@ const char* ui_choose_file(const char* path)
 {
     const char* result = NULL;
 
-    printf("%s: HEAP=%#010x\n", __func__, esp_get_free_heap_size());
+    printf("%s: HEAP=%#010lx\n", __func__, esp_get_free_heap_size());
 
     files = 0;
     fileCount = odroid_sdcard_files_get(path, ".fw", &files);
@@ -1224,7 +1225,7 @@ void app_main(void)
     strcat(VERSION, "-");
     strcat(VERSION, GITREV);
 
-    printf("odroid-go-firmware (%s). HEAP=%#010x\n", VERSION, esp_get_free_heap_size());
+    printf("odroid-go-firmware (%s). HEAP=%#010lx\n", VERSION, esp_get_free_heap_size());
 
     nvs_flash_init();
 
