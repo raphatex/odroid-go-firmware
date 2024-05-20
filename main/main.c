@@ -619,6 +619,7 @@ void flash_firmware(const char* fullPath)
 
     while(true)
     {
+        // printf("curren_flash_address:0x%x\n", curren_flash_address);
         if (ftell(file) >= (file_size - sizeof(checksum)))
         {
             break;
@@ -661,6 +662,8 @@ void flash_firmware(const char* fullPath)
         // Data Length
         uint32_t length;
         count = fread(&length, 1, sizeof(length), file);
+        strncpy(tempstring, (char*)slot.label, 16);
+        printf("slot:type(%d),subtype(%d),label(%s),length(%d),data_size(%d)\n", slot.type, slot.subtype, tempstring, (int)slot.length, (int)length);
         if (count != sizeof(length))
         {
             DisplayError("LENGTH READ ERROR");
@@ -698,7 +701,7 @@ void flash_firmware(const char* fullPath)
             esp_err_t ret = esp_flash_erase_region(NULL, curren_flash_address, eraseBlocks * ERASE_BLOCK_SIZE);
             if (ret != ESP_OK)
             {
-                printf("esp_flash_erase_region failed. eraseBlocks=%d\n", eraseBlocks);
+                printf("esp_flash_erase_region failed. eraseBlocks=%d(0x%x)\n", eraseBlocks, ret);
                 DisplayError("ERASE ERROR");
                 indicate_error();
             }
@@ -713,7 +716,7 @@ void flash_firmware(const char* fullPath)
             for (int offset = 0; offset < length; offset += ERASE_BLOCK_SIZE)
             {
                 // Display
-                sprintf(tempstring, "Writing (%d)", parts_count);
+                sprintf(tempstring, "Writing %s (%d%%)", (char*)slot.label, (int)(100*offset/length));
 
                 printf("%s - %#08x\n", tempstring, offset);
                 DisplayProgress((float)offset / (float)(length - ERASE_BLOCK_SIZE) * 100.0f);
@@ -757,7 +760,7 @@ void flash_firmware(const char* fullPath)
 
 
             // TODO: verify
-
+            // esp_flash_
 
 
 
@@ -1194,6 +1197,7 @@ static void menu_main()
         indicate_error();
     }
 
+    esp_flash_init(NULL);
 
     // Check for /odroid/firmware
 
@@ -1219,6 +1223,7 @@ void app_main(void)
     size_t ver_size = strlen(VER_PREFIX) + strlen(COMPILEDATE) + 1 + strlen(GITREV) + 1;
     VERSION = malloc(ver_size);
     if (!VERSION) abort();
+    nvs_flash_init();
 
     strcpy(VERSION, VER_PREFIX);
     strcat(VERSION, COMPILEDATE);
@@ -1226,8 +1231,6 @@ void app_main(void)
     strcat(VERSION, GITREV);
 
     printf("odroid-go-firmware (%s). HEAP=%#010lx\n", VERSION, esp_get_free_heap_size());
-
-    nvs_flash_init();
 
     input_init();
 

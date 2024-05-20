@@ -256,10 +256,11 @@ static void backlight_init()
 //   ledc_timer.bit_num = LEDC_TIMER_13_BIT; //set timer counter bit number
     ledc_timer.freq_hz = 5000;              //set frequency of pwm
     ledc_timer.speed_mode = LEDC_LOW_SPEED_MODE;   //timer mode,
+    ledc_timer.duty_resolution=LEDC_TIMER_10_BIT;
     ledc_timer.timer_num = LEDC_TIMER_0;    //timer index
 
 
-  ledc_timer_config(&ledc_timer);
+    ledc_timer_config(&ledc_timer);
 
 
     //set the configuration
@@ -436,14 +437,22 @@ void ili9341_init()
     // Initialize SPI
     esp_err_t ret;
     //spi_device_handle_t spi;
-    spi_bus_config_t buscfg;
-	memset(&buscfg, 0, sizeof(buscfg));
+    // spi_bus_config_t buscfg;
+	// memset(&buscfg, 0, sizeof(buscfg));
 
-    buscfg.miso_io_num = SPI_PIN_NUM_MISO;
-    buscfg.mosi_io_num = SPI_PIN_NUM_MOSI;
-    buscfg.sclk_io_num = SPI_PIN_NUM_CLK;
-    buscfg.quadwp_io_num=-1;
-    buscfg.quadhd_io_num=-1;
+    // buscfg.miso_io_num = SPI_PIN_NUM_MISO;
+    // buscfg.mosi_io_num = SPI_PIN_NUM_MOSI;
+    // buscfg.sclk_io_num = SPI_PIN_NUM_CLK;
+    // buscfg.quadwp_io_num=-1;
+    // buscfg.quadhd_io_num=-1;
+    spi_bus_config_t bus_cfg = {
+        .mosi_io_num = (gpio_num_t)SPI_PIN_NUM_MOSI,
+        .miso_io_num = (gpio_num_t)SPI_PIN_NUM_MISO,
+        .sclk_io_num = (gpio_num_t)SPI_PIN_NUM_CLK,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = 4000,
+    };
 
     spi_device_interface_config_t devcfg;
 	memset(&devcfg, 0, sizeof(devcfg));
@@ -457,7 +466,7 @@ void ili9341_init()
     devcfg.flags = 0 ;//SPI_DEVICE_HALFDUPLEX;
 
     //Initialize the SPI bus
-    ret=spi_bus_initialize(VSPI_HOST, &buscfg, SPI_DMA_CH_AUTO);
+    ret=spi_bus_initialize(VSPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
     assert(ret==ESP_OK);
 
     //Attach the LCD to the SPI bus
