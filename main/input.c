@@ -1,7 +1,6 @@
 #include "input.h"
 
 #include "driver/gpio.h"
-#include "driver/adc.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -21,40 +20,10 @@ odroid_gamepad_state input_read_raw()
 {
     odroid_gamepad_state state = {0};
 
-    int joyX = adc1_get_raw(ODROID_GAMEPAD_IO_X);
-    int joyY = adc1_get_raw(ODROID_GAMEPAD_IO_Y);
-
-    if (joyX > 2048 + 1024)
-    {
-        state.values[ODROID_INPUT_LEFT] = 1;
-        state.values[ODROID_INPUT_RIGHT] = 0;
-    }
-    else if (joyX > 1024)
-    {
-        state.values[ODROID_INPUT_LEFT] = 0;
-        state.values[ODROID_INPUT_RIGHT] = 1;
-    }
-    else
-    {
-        state.values[ODROID_INPUT_LEFT] = 0;
-        state.values[ODROID_INPUT_RIGHT] = 0;
-    }
-
-    if (joyY > 2048 + 1024)
-    {
-        state.values[ODROID_INPUT_UP] = 1;
-        state.values[ODROID_INPUT_DOWN] = 0;
-    }
-    else if (joyY > 1024)
-    {
-        state.values[ODROID_INPUT_UP] = 0;
-        state.values[ODROID_INPUT_DOWN] = 1;
-    }
-    else
-    {
-        state.values[ODROID_INPUT_UP] = 0;
-        state.values[ODROID_INPUT_DOWN] = 0;
-    }
+    state.values[ODROID_INPUT_UP] = !(gpio_get_level(ODROID_GAMEPAD_IO_UP));
+    state.values[ODROID_INPUT_DOWN] = !(gpio_get_level(ODROID_GAMEPAD_IO_DOWN));
+    state.values[ODROID_INPUT_LEFT] = !(gpio_get_level(ODROID_GAMEPAD_IO_LEFT));
+    state.values[ODROID_INPUT_RIGHT] = !(gpio_get_level(ODROID_GAMEPAD_IO_RIGHT));
 
     state.values[ODROID_INPUT_SELECT] = !(gpio_get_level(ODROID_GAMEPAD_IO_SELECT));
     state.values[ODROID_INPUT_START] = !(gpio_get_level(ODROID_GAMEPAD_IO_START));
@@ -151,11 +120,23 @@ void input_init()
         printf("xSemaphoreCreateMutex failed.\n");
         abort();
     }
+    gpio_set_direction(ODROID_GAMEPAD_IO_UP, GPIO_MODE_INPUT);
+	gpio_set_pull_mode(ODROID_GAMEPAD_IO_UP, GPIO_PULLUP_ONLY);
+
+    gpio_set_direction(ODROID_GAMEPAD_IO_DOWN, GPIO_MODE_INPUT);
+	gpio_set_pull_mode(ODROID_GAMEPAD_IO_DOWN, GPIO_PULLUP_ONLY);
+
+    gpio_set_direction(ODROID_GAMEPAD_IO_LEFT, GPIO_MODE_INPUT);
+	gpio_set_pull_mode(ODROID_GAMEPAD_IO_LEFT, GPIO_PULLUP_ONLY);
+
+    gpio_set_direction(ODROID_GAMEPAD_IO_RIGHT, GPIO_MODE_INPUT);
+	gpio_set_pull_mode(ODROID_GAMEPAD_IO_RIGHT, GPIO_PULLUP_ONLY);
 
 	gpio_set_direction(ODROID_GAMEPAD_IO_SELECT, GPIO_MODE_INPUT);
 	gpio_set_pull_mode(ODROID_GAMEPAD_IO_SELECT, GPIO_PULLUP_ONLY);
 
 	gpio_set_direction(ODROID_GAMEPAD_IO_START, GPIO_MODE_INPUT);
+    gpio_set_direction(ODROID_GAMEPAD_IO_START, GPIO_PULLUP_ONLY);
 
 	gpio_set_direction(ODROID_GAMEPAD_IO_A, GPIO_MODE_INPUT);
 	gpio_set_pull_mode(ODROID_GAMEPAD_IO_A, GPIO_PULLUP_ONLY);
@@ -163,14 +144,11 @@ void input_init()
     gpio_set_direction(ODROID_GAMEPAD_IO_B, GPIO_MODE_INPUT);
 	gpio_set_pull_mode(ODROID_GAMEPAD_IO_B, GPIO_PULLUP_ONLY);
 
-	adc1_config_width(12);
-    adc1_config_channel_atten(ODROID_GAMEPAD_IO_X, ADC_ATTEN_DB_6);
-	adc1_config_channel_atten(ODROID_GAMEPAD_IO_Y, ADC_ATTEN_DB_6);
-
 	gpio_set_direction(ODROID_GAMEPAD_IO_MENU, GPIO_MODE_INPUT);
 	gpio_set_pull_mode(ODROID_GAMEPAD_IO_MENU, GPIO_PULLUP_ONLY);
 
 	gpio_set_direction(ODROID_GAMEPAD_IO_VOLUME, GPIO_MODE_INPUT);
+    gpio_set_direction(ODROID_GAMEPAD_IO_VOLUME, GPIO_PULLUP_ONLY);
 
     input_gamepad_initialized = true;
 

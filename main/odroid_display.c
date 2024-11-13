@@ -2,7 +2,6 @@
 #include "freertos/task.h"
 #include "esp_system.h"
 #include "driver/spi_master.h"
-#include "driver/ledc.h"
 #include "driver/rtc_io.h"
 
 #include <string.h>
@@ -15,11 +14,10 @@ const gpio_num_t SPI_PIN_NUM_MOSI = GPIO_NUM_23;
 const gpio_num_t SPI_PIN_NUM_CLK  = GPIO_NUM_18;
 
 const gpio_num_t LCD_PIN_NUM_CS   = GPIO_NUM_5;
-const gpio_num_t LCD_PIN_NUM_DC   = GPIO_NUM_21;
-const gpio_num_t LCD_PIN_NUM_BCKL = GPIO_NUM_14;
+const gpio_num_t LCD_PIN_NUM_DC   = GPIO_NUM_2;
+const gpio_num_t LCD_PIN_NUM_BCKL = GPIO_NUM_12;
 const int LCD_BACKLIGHT_ON_VALUE = 1;
 const int LCD_SPI_CLOCK_RATE = 40000000;
-#define LEDC_TEST_DUTY         (40)
 
 #define GAME_WIDTH (256)
 #define GAME_HEIGHT (192)
@@ -27,13 +25,8 @@ const int LCD_SPI_CLOCK_RATE = 40000000;
 #define GAMEGEAR_WIDTH (160)
 #define GAMEGEAR_HEIGHT (144)
 
-#define MADCTL_MY  0x80
-#define MADCTL_MX  0x40
-#define MADCTL_MV  0x20
-#define MADCTL_ML  0x10
-#define MADCTL_MH 0x04
-#define TFT_RGB_BGR 0x08
-
+#define LCD_SCREEN_MARGIN_LEFT  20
+#define LCD_SCREEN_MARGIN_RIGHT 20
 
 static spi_transaction_t trans[8];
 static spi_device_handle_t spi;
@@ -57,7 +50,6 @@ typedef struct {
     uint8_t databytes; //No of data in data; bit 7 = delay after set; 0xFF = end of cmds.
 } ili_init_cmd_t;
 
-#define TFT_CMD_SWRESET	0x01
 #define TFT_CMD_SLEEP 0x10
 #define TFT_CMD_DISPLAY_OFF 0x28
 
@@ -73,7 +65,8 @@ typedef struct {
 static const ili_init_cmd_t ili_init_cmds[] = {
     // VCI=2.8V
     //************* Start Initial Sequence **********//
-    {TFT_CMD_SWRESET, {0}, 0x80},
+    {0x01, {0}, 0x80},    // reset
+    {0x3A, {0X05}, 1},    // Pixel Format Set RGB565
     {0xCF, {0x00, 0xc3, 0x30}, 3},
     {0xED, {0x64, 0x03, 0x12, 0x81}, 4},
     {0xE8, {0x85, 0x00, 0x78}, 3},
@@ -84,35 +77,22 @@ static const ili_init_cmd_t ili_init_cmds[] = {
     {0xC1, {0x12}, 1},    //Power control   //SAP[2:0];BT[3:0]
     {0xC5, {0x32, 0x3C}, 2},    //VCM control
     {0xC7, {0x91}, 1},    //VCM control2
-    //{0x36, {(MADCTL_MV | MADCTL_MX | TFT_RGB_BGR)}, 1},    // Memory Access Control
-    {0x36, {(MADCTL_MV | MADCTL_MY | TFT_RGB_BGR)}, 1},    // Memory Access Control
-    {0x3A, {0x55}, 1},
-    {0xB1, {0x00, 0x1B}, 2},  // Frame Rate Control (1B=70, 1F=61, 10=119)
+    {0x36, {(0x40 | 0x80 | 0x08)}, 1},    // Memory Access Control
+    {0xB1, {0x00, 0x10}, 2},  // Frame Rate Control (1B=70, 1F=61, 10=119)
     {0xB6, {0x0A, 0xA2}, 2},    // Display Function Control
     {0xF6, {0x01, 0x30}, 2},
     {0xF2, {0x00}, 1},    // 3Gamma Function Disable
     {0x26, {0x01}, 1},     //Gamma curve selected
 
     //Set Gamma
-    {0xE0, {0x0F, 0x31, 0x2B, 0x0C, 0x0E, 0x08, 0x4E, 0xF1, 0x37, 0x07, 0x10, 0x03, 0x0E, 0x09, 0x00}, 15},
-    {0XE1, {0x00, 0x0E, 0x14, 0x03, 0x11, 0x07, 0x31, 0xC1, 0x48, 0x08, 0x0F, 0x0C, 0x31, 0x36, 0x0F}, 15},
-
-    // LUT
-    {0x2d, {0x01, 0x03, 0x05, 0x07, 0x09, 0x0b, 0x0d, 0x0f, 0x11, 0x13, 0x15, 0x17, 0x19, 0x1b, 0x1d, 0x1f,
-            0x21, 0x23, 0x25, 0x27, 0x29, 0x2b, 0x2d, 0x2f, 0x31, 0x33, 0x35, 0x37, 0x39, 0x3b, 0x3d, 0x3f,
-            0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
-            0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c,
-            0x1d, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x26, 0x27, 0x28, 0x29, 0x2a,
-            0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39,
-            0x00, 0x00, 0x02, 0x04, 0x06, 0x08, 0x0a, 0x0c, 0x0e, 0x10, 0x12, 0x12, 0x14, 0x16, 0x18, 0x1a,
-            0x1c, 0x1e, 0x20, 0x22, 0x24, 0x26, 0x26, 0x28, 0x2a, 0x2c, 0x2e, 0x30, 0x32, 0x34, 0x36, 0x38}, 128},
+    {0xE0, {0xD0, 0x00, 0x05, 0x0E, 0x15, 0x0D, 0x37, 0x43, 0x47, 0x09, 0x15, 0x12, 0x16, 0x19}, 14},
+    {0XE1, {0xD0, 0x00, 0x05, 0x0D, 0x0C, 0x06, 0x2D, 0x44, 0x40, 0x0E, 0x1C, 0x18, 0x16, 0x19}, 14},
 
     {0x11, {0}, 0x80},    //Exit Sleep
     {0x29, {0}, 0x80},    //Display on
 
     {0, {0}, 0xff}
 };
-
 
 
 //Send a command to the ILI9341. Uses spi_device_transmit, which waits until the transfer is complete.
@@ -246,51 +226,7 @@ static void send_continue_line(uint16_t *line, int width, int lineCount)
 
 static void backlight_init()
 {
-  // (duty range is 0 ~ ((2**bit_num)-1)
-
-
-  //configure timer0
-  ledc_timer_config_t ledc_timer;
-	memset(&ledc_timer, 0, sizeof(ledc_timer));
-
-//   ledc_timer.bit_num = LEDC_TIMER_13_BIT; //set timer counter bit number
-    ledc_timer.freq_hz = 5000;              //set frequency of pwm
-    ledc_timer.speed_mode = LEDC_LOW_SPEED_MODE;   //timer mode,
-    ledc_timer.duty_resolution=LEDC_TIMER_10_BIT;
-    ledc_timer.timer_num = LEDC_TIMER_0;    //timer index
-
-
-    ledc_timer_config(&ledc_timer);
-
-
-    //set the configuration
-    ledc_channel_config_t ledc_channel;
-    memset(&ledc_channel, 0, sizeof(ledc_channel));
-
-    //set LEDC channel 0
-    ledc_channel.channel = LEDC_CHANNEL_0;
-    //set the duty for initialization.(duty range is 0 ~ ((2**bit_num)-1)
-    ledc_channel.duty = (LCD_BACKLIGHT_ON_VALUE) ? 0 : DUTY_MAX;
-    //GPIO number
-    ledc_channel.gpio_num = LCD_PIN_NUM_BCKL;
-    //GPIO INTR TYPE, as an example, we enable fade_end interrupt here.
-    ledc_channel.intr_type = LEDC_INTR_FADE_END;
-    //set LEDC mode, from ledc_mode_t
-    ledc_channel.speed_mode = LEDC_LOW_SPEED_MODE;
-    //set LEDC timer source, if different channel use one timer,
-    //the frequency and bit_num of these channels should be the same
-    ledc_channel.timer_sel = LEDC_TIMER_0;
-
-
-    ledc_channel_config(&ledc_channel);
-
-
-    //initialize fade service.
-    ledc_fade_func_install(0);
-
-    // duty range is 0 ~ ((2**bit_num)-1)
-    ledc_set_fade_with_time(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, (LCD_BACKLIGHT_ON_VALUE) ? LEDC_TEST_DUTY : 0, 500);
-    ledc_fade_start(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, LEDC_FADE_NO_WAIT);
+    gpio_set_level(LCD_PIN_NUM_BCKL, LCD_BACKLIGHT_ON_VALUE);
 }
 
 
